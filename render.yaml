@@ -1,0 +1,26 @@
+# Render Blueprint for the Stash API (free web service).
+# Secrets use sync: false, so Render asks for them when you create the service.
+services:
+  - type: web
+    name: stash-api
+    runtime: node
+    plan: free
+    rootDir: server
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: MONGODB_URI
+        sync: false
+      - key: AUTH0_DOMAIN
+        value: dev-c3gbqidu3vv1cbot.us.auth0.com
+      - key: AUTH0_AUDIENCE
+        value: https://stash-api
+      - key: CLIENT_ORIGIN
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-4o-mini

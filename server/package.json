@@ -1,0 +1,25 @@
+{
+  "name": "stash-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Express + MongoDB API for Stash, a learning feed built from PDFs and web pages.",
+  "type": "module",
+  "main": "src/index.js",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "node --watch src/index.js",
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "cheerio": "^1.2.0",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.0",
+    "express": "^5.2.1",
+    "express-oauth2-jwt-bearer": "^1.10.0",
+    "mongoose": "^9.0.0",
+    "multer": "^2.0.2",
+    "unpdf": "^1.8.0"
+  }
+}
