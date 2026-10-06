@@ -10,3 +10,5 @@ export { Conversation } from './Conversation.js';
 export { Message } from './Message.js';
 export { Story, STORY_THEMES, STORY_TTL_MS } from './Story.js';
 export { StoryView } from './StoryView.js';
+export { LessonProgress } from './LessonProgress.js';
+export { ActivityDay } from './ActivityDay.js';

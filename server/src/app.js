@@ -14,6 +14,7 @@ import { userRoutes } from './routes/users.js';
 import { recommendationRoutes } from './routes/recommendations.js';
 import { storyRoutes } from './routes/stories.js';
 import { messageRoutes } from './routes/messages.js';
+import { lessonRoutes } from './routes/lessons.js';
 
 export function createApp(config) {
   fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -51,6 +52,7 @@ export function createApp(config) {
   api.use(recommendationRoutes(deps));
   api.use(storyRoutes(deps));
   api.use(messageRoutes(deps));
+  api.use(lessonRoutes(deps));
 
   app.use('/api', api);
   app.use('/api', notFoundHandler);

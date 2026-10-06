@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { mediaSchema } from './media.js';
 
 const { ObjectId } = mongoose.Schema.Types;
 
@@ -11,6 +12,7 @@ const postSchema = new mongoose.Schema(
     body: { type: String, required: true, trim: true, maxlength: 1200 },
     example: { type: String, trim: true, maxlength: 600 },
     order: { type: Number, required: true, min: 0 },
+    media: { type: mediaSchema, default: undefined },
     likeCount: { type: Number, default: 0, min: 0 },
     commentCount: { type: Number, default: 0, min: 0 },
     shareCount: { type: Number, default: 0, min: 0 },

@@ -32,6 +32,7 @@ export function sourceRoutes({ requireAuth, openai }) {
         topicName: req.body?.topic,
         rawUrl: req.body?.url,
         file: req.file,
+        fromTopic: req.body?.from === 'wikipedia',
         openai,
       });
       res.status(201).json({

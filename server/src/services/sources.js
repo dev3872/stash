@@ -7,7 +7,9 @@ import { findOrCreateTopic, normalizeTopicName } from './topics.js';
 import { extractFromPdf } from './extract-pdf.js';
 import { extractFromUrl } from './extract-url.js';
 import { convertToPosts } from './convert.js';
-import { truncate } from './text.js';
+import { countWords, truncate } from './text.js';
+import { lessonSourceForTopic } from './wikipedia.js';
+import { mediaForPosts } from './media.js';
 
 export function parseSourceUrl(raw) {
   const value = typeof raw === 'string' ? raw.trim() : '';
@@ -30,33 +32,47 @@ export function parseSourceUrl(raw) {
  * Runs the whole create flow inside the request: validate, upsert the topic,
  * extract text, convert to posts, save. Marks the source failed on any error.
  */
-export async function createSourceWithPosts({ user, topicName, rawUrl, file, openai }) {
+export async function createSourceWithPosts({ user, topicName, rawUrl, file, fromTopic = false, openai }) {
   const url = parseSourceUrl(rawUrl);
   if (file && url) throw badRequest('Choose either a PDF or a link, not both.');
-  if (!file && !url) throw badRequest('Add a PDF or paste a link to learn from.');
-  normalizeTopicName(topicName); // validate before creating anything
+  if (fromTopic && (file || url)) throw badRequest('Choose a PDF, a link, or “Just the topic”, not more than one.');
+  if (!file && !url && !fromTopic) throw badRequest('Add a PDF, paste a link, or choose “Just the topic” to learn from.');
+  const cleanName = normalizeTopicName(topicName); // validate before creating anything
 
-  const topic = await findOrCreateTopic(topicName);
+  // Topic only: find the encyclopedia article first, so nothing is saved if there isn't one.
+  const wiki = fromTopic ? await lessonSourceForTopic(cleanName) : null;
+  if (wiki && countWords(wiki.text) < LIMITS.minWords) {
+    throw badRequest(`The Wikipedia article “${wiki.article.title}” is too short to make a lesson from. Try a broader topic, or upload a PDF or paste a link.`);
+  }
+
+  const topic = await findOrCreateTopic(cleanName);
   const source = await Source.create({
     topic: topic._id,
     author: user._id,
     kind: file ? 'pdf' : 'url',
-    url: url || undefined,
+    url: wiki ? wiki.article.url : url || undefined,
     filePath: file ? path.relative(path.resolve(UPLOAD_DIR, '..'), file.path) : undefined,
     originalName: file ? file.originalname.slice(0, 200) : undefined,
+    origin: file ? 'upload' : wiki ? 'topic' : 'link',
+    wikiTitle: wiki ? wiki.article.title : undefined,
     status: 'pending',
   });
 
   try {
-    const extracted = file
-      ? await extractFromPdf(await fs.readFile(file.path), LIMITS)
-      : await extractFromUrl(url, LIMITS);
+    let extracted;
+    if (wiki) extracted = { title: wiki.article.title, text: truncate(wiki.text, LIMITS.extractChars) };
+    else if (file) extracted = await extractFromPdf(await fs.readFile(file.path), LIMITS);
+    else extracted = await extractFromUrl(url, LIMITS);
 
     source.extractedText = truncate(extracted.text, LIMITS.storedTextChars);
     source.title = extracted.title || (file ? file.originalname.replace(/\.pdf$/i, '') : new URL(url).hostname);
     await source.save();
 
     const { posts, converter } = await convertToPosts({ text: extracted.text, topicName: topic.name, openai, limits: LIMITS });
+
+    // Pictures and short videos from Wikimedia Commons, matched to each bite (best effort).
+    const { media, checked } = await mediaForPosts(posts, { topicName: topic.name, article: wiki?.article || null });
+    if (checked) source.mediaCheckedAt = new Date();
 
     const docs = await Post.insertMany(
       posts.map((post, order) => ({
@@ -66,6 +82,7 @@ export async function createSourceWithPosts({ user, topicName, rawUrl, file, ope
         title: post.title,
         body: post.body,
         example: post.example || undefined,
+        media: media[order] || undefined,
         order,
       }))
     );
@@ -100,6 +117,7 @@ export function serializeSourceStatus(source, topic) {
     url: source.url || null,
     originalName: source.originalName || null,
     title: source.title || null,
+    origin: source.origin || null,
     postCount: source.postCount ?? 0,
     converter: source.converter || null,
     topic: topic ? { id: String(topic._id), name: topic.name, slug: topic.slug } : undefined,

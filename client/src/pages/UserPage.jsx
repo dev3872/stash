@@ -3,7 +3,7 @@ import { Link, Navigate, useNavigate, useParams } from 'react-router';
 import { useApi } from '../api/useApi.js';
 import { useResource } from '../lib/useResource.js';
 import { Avatar } from '../components/Avatar.jsx';
-import { FeedList } from '../components/FeedList.jsx';
+import { LessonList } from '../components/LessonList.jsx';
 import { FollowButton } from '../components/FollowButton.jsx';
 import { TopicChips } from '../components/TopicChips.jsx';
 import { Icon } from '../components/Icon.jsx';
@@ -32,18 +32,19 @@ export function AuthorPosts({ userId, isAuthenticated, emptyTitle, emptyAction }
   const { request } = useApi();
   const loadPage = useCallback(
     async (cursor, signal) => {
-      const qs = new URLSearchParams({ author: userId, limit: '10' });
+      const qs = new URLSearchParams({ author: userId, limit: '8' });
       if (cursor) qs.set('cursor', cursor);
-      const data = await request(`/feed?${qs}`, { signal });
-      return { posts: data.posts, next: data.nextCursor };
+      const data = await request(`/lessons?${qs}`, { signal });
+      return { lessons: data.lessons, next: data.nextCursor };
     },
     [request, userId]
   );
   return (
-    <FeedList
+    <LessonList
       key={`${userId}-${isAuthenticated}`}
       resetKey={`${userId}-${isAuthenticated}`}
       loadPage={loadPage}
+      headingLevel={3}
       empty={<EmptyState title={emptyTitle} action={emptyAction} />}
     />
   );
@@ -96,9 +97,9 @@ export function UserPage() {
           <TopicChips topics={data.topics} showAll={false} label={`${data.user.name}’s topics`} />
         </section>
       ) : null}
-      <h2 className="section-title">Posts</h2>
+      <h2 className="section-title">Lessons</h2>
       <AuthorPosts userId={id} isAuthenticated={isAuthenticated} emptyTitle={`${data.user.name} hasn’t posted a lesson yet`} />
-      <p className="hint center"><Link to="/">Back to the feed</Link></p>
+      <p className="hint center"><Link to="/">Back to home</Link></p>
     </div>
   );
 }

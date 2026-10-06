@@ -82,11 +82,13 @@ export function splitSentences(text) {
   const sentences = [];
   const seen = new Set();
   let heading = null;
+  let section = null;
 
   for (const paragraph of paragraphs) {
     if (isHeading(paragraph)) {
       if (END_SECTIONS.test(paragraph)) break; // stop at references, "see also", etc.
       heading = paragraph;
+      section = paragraph;
       continue;
     }
     const parts = protectAbbreviations(paragraph).split(/(?<=[.!?]["”’')]?)\s+(?=["“'‘(]?[\p{Lu}\d])/u);
@@ -96,7 +98,7 @@ export function splitSentences(text) {
       if (!isUsableSentence(sentence) || seen.has(key)) continue;
       seen.add(key);
       // Only the first sentence of a section carries its heading.
-      sentences.push({ text: sentence, heading, index: sentences.length });
+      sentences.push({ text: sentence, heading, section, index: sentences.length });
       heading = null;
     }
   }
@@ -165,16 +167,32 @@ function titleCandidates(group, docFreq, groupCount, topicStems) {
     if (ranked.length === 4) break;
   }
   if (ranked.length >= 2 && (counts.get(ranked[1]) || 0) >= 2) candidates.push(capitalize(`${ranked[0]} and ${ranked[1]}`));
-  ranked.forEach((word) => candidates.push(capitalize(word)));
-  if (ranked.length >= 2) candidates.push(capitalize(`${ranked[0]} and ${ranked[1]}`));
+  // A lone keyword only makes a title when the part keeps coming back to it.
+  ranked.filter((word) => (counts.get(word) || 0) >= 2).forEach((word) => candidates.push(capitalize(word)));
   return candidates;
 }
 
-/** Picks a title no earlier post in the sequence has used. */
-function buildTitle(group, docFreq, groupCount, topicStems, index, topicName, used) {
-  const title = titleCandidates(group, docFreq, groupCount, topicStems)
-    .map((t) => t.slice(0, 80))
-    .find((t) => !used.has(t.toLowerCase())) || `${topicName}: part ${index + 1}`;
+const GENERIC_HEADING = /^(contents|introduction|overview|abstract|summary|background|general|description|basics)$/i;
+
+/**
+ * Picks a readable title no earlier post has used. In order: the opening part
+ * of a source with no heading becomes "Topic: the basics", a section's own heading,
+ * "Heading, part 2" when a long section was split, then a repeated phrase,
+ * and only then keywords that occur more than once.
+ */
+function buildTitle(group, docFreq, groupCount, topicStems, index, topicName, used, sectionParts) {
+  const first = group[0];
+  const own = [];
+  if (index === 0 && !first.section && topicName.length <= 50) own.push(`${topicName}: the basics`);
+  if (first.section) {
+    const section = capitalize(first.section).slice(0, 70);
+    const part = (sectionParts.get(first.section) || 0) + 1;
+    sectionParts.set(first.section, part);
+    if (GENERIC_HEADING.test(first.section)) own.push(part === 1 ? 'The big picture' : `The big picture, part ${part}`);
+    else own.push(part === 1 ? section : `${section}, part ${part}`);
+  }
+  const candidates = [...own, ...titleCandidates(group, docFreq, groupCount, topicStems)];
+  const title = candidates.map((t) => t.slice(0, 80)).find((t) => !used.has(t.toLowerCase())) || `${topicName}: part ${index + 1}`;
   used.add(title.toLowerCase());
   return title;
 }
@@ -261,6 +279,7 @@ export function convertLocally(text, topicName) {
   };
 
   const usedTitles = new Set();
+  const sectionParts = new Map();
   return groups.map((group, i) => {
     let pool = group;
     let example = null;
@@ -279,7 +298,7 @@ export function convertLocally(text, topicName) {
       .join(' ');
 
     return {
-      title: buildTitle(group, docFreq, groups.length, topicStems, i, topicName, usedTitles).slice(0, 80),
+      title: buildTitle(group, docFreq, groups.length, topicStems, i, topicName, usedTitles, sectionParts).slice(0, 80),
       body,
       example,
     };

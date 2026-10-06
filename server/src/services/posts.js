@@ -5,7 +5,7 @@ import { serializePost } from './serialize.js';
 export const POST_POPULATE = [
   { path: 'author', select: 'name picture' },
   { path: 'topic', select: 'name slug postCount' },
-  { path: 'source', select: 'kind url originalName title postCount createdAt' },
+  { path: 'source', select: 'kind url originalName title origin postCount createdAt' },
 ];
 
 export async function likedPostIds(user, postIds) {

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router';
+import { useLocation, useNavigate } from 'react-router';
 import { useApi } from '../api/useApi.js';
 import { useResource } from '../lib/useResource.js';
 import { Icon } from '../components/Icon.jsx';
@@ -12,7 +12,9 @@ function validate({ topic, mode, file, url }) {
   const name = topic.trim();
   if (name.length < 2) errors.topic = 'Enter a topic, like “String theory”.';
   else if (name.length > 80) errors.topic = 'Keep the topic under 80 characters.';
-  if (mode === 'pdf') {
+  if (mode === 'topic') {
+    // Nothing else to check: the server looks up the article.
+  } else if (mode === 'pdf') {
     if (!file) errors.file = 'Choose a PDF to upload.';
     else if (file.type !== 'application/pdf') errors.file = 'That file isn’t a PDF. Choose a .pdf file.';
     else if (file.size > MAX_BYTES) errors.file = `That PDF is ${(file.size / 1024 / 1024).toFixed(1)} MB. The limit is 15 MB.`;
@@ -35,9 +37,10 @@ function validate({ topic, mode, file, url }) {
 export function CreatePage() {
   const { request, isAuthenticated, authLoading, login } = useApi();
   const navigate = useNavigate();
+  const location = useLocation();
   const topics = useResource((signal) => request('/topics', { signal }), []);
-  const [topic, setTopic] = useState('');
-  const [mode, setMode] = useState('pdf');
+  const [topic, setTopic] = useState(() => (typeof location.state?.topic === 'string' ? location.state.topic : ''));
+  const [mode, setMode] = useState('topic');
   const [file, setFile] = useState(null);
   const [url, setUrl] = useState('');
   const [errors, setErrors] = useState({});
@@ -62,7 +65,7 @@ export function CreatePage() {
     return (
       <div className="page">
         <SignInPrompt title="Sign in to create a lesson" onSignIn={() => login('/create')}>
-          Upload a PDF or paste a link, and Stash turns it into a short series of posts that explain the topic.
+          Type a topic, upload a PDF or paste a link, and Stash turns it into a short, swipeable lesson with pictures.
         </SignInPrompt>
       </div>
     );
@@ -79,7 +82,9 @@ export function CreatePage() {
     }
 
     let body;
-    if (mode === 'pdf') {
+    if (mode === 'topic') {
+      body = { topic: topic.trim(), from: 'wikipedia' };
+    } else if (mode === 'pdf') {
       body = new FormData();
       body.append('topic', topic.trim());
       body.append('file', file);
@@ -90,7 +95,7 @@ export function CreatePage() {
     setPending(true);
     try {
       const result = await request('/sources', { method: 'POST', auth: true, body });
-      navigate(`/sequences/${result.source.id}`, { state: { justCreated: true } });
+      navigate(`/learn/${result.source.id}?b=1`, { state: { justCreated: true } });
     } catch (err) {
       setServerError(err.message);
       setPending(false);
@@ -104,12 +109,20 @@ export function CreatePage() {
 
   return (
     <div className="page">
-      <header className="page-head">
-        <h1>Create a lesson</h1>
-        <p className="muted">Give Stash a PDF or a web page. It pulls out the main ideas and writes 4–8 short posts that explain them in plain language.</p>
+      <header className="create-hero">
+        <span className="create-hero-icon" aria-hidden="true"><Icon name="bolt" size={30} filled /></span>
+        <div>
+          <h1>Make a lesson</h1>
+          <p>Type a topic, or give Stash a PDF or a web page. It pulls out the main ideas and makes 4–8 bite-sized cards with pictures.</p>
+        </div>
       </header>
+      <ol className="create-steps" aria-label="How it works">
+        <li><span>1</span> Name a topic</li>
+        <li><span>2</span> Pick a source</li>
+        <li><span>3</span> Read your bites</li>
+      </ol>
 
-      <form className="form card" onSubmit={submit} noValidate aria-busy={pending}>
+      <form className="form create-form" onSubmit={submit} noValidate aria-busy={pending}>
         <fieldset disabled={pending} className="form-fields">
           <div className="field">
             <label htmlFor="create-topic" className="label">Topic</label>
@@ -133,19 +146,34 @@ export function CreatePage() {
 
           <fieldset className="field">
             <legend className="label">Source</legend>
-            <div className="segmented">
-              <label className={mode === 'pdf' ? 'active' : ''}>
-                <input type="radio" name="mode" value="pdf" checked={mode === 'pdf'} onChange={() => setMode('pdf')} />
-                <Icon name="file" size={18} /> Upload a PDF
+            <div className="source-tiles">
+              <label className={`source-tile${mode === 'topic' ? ' active' : ''}`}>
+                <input type="radio" name="mode" value="topic" checked={mode === 'topic'} onChange={() => setMode('topic')} />
+                <span className="source-tile-icon tile-topic" aria-hidden="true"><Icon name="globe" size={24} /></span>
+                <span className="source-tile-name">Just the topic</span>
+                <span className="source-tile-hint">We find the article for you</span>
               </label>
-              <label className={mode === 'url' ? 'active' : ''}>
+              <label className={`source-tile${mode === 'pdf' ? ' active' : ''}`}>
+                <input type="radio" name="mode" value="pdf" checked={mode === 'pdf'} onChange={() => setMode('pdf')} />
+                <span className="source-tile-icon tile-pdf" aria-hidden="true"><Icon name="file" size={24} /></span>
+                <span className="source-tile-name">Upload a PDF</span>
+                <span className="source-tile-hint">Papers, notes, chapters</span>
+              </label>
+              <label className={`source-tile${mode === 'url' ? ' active' : ''}`}>
                 <input type="radio" name="mode" value="url" checked={mode === 'url'} onChange={() => setMode('url')} />
-                <Icon name="link" size={18} /> Paste a link
+                <span className="source-tile-icon tile-link" aria-hidden="true"><Icon name="link" size={24} /></span>
+                <span className="source-tile-name">Paste a link</span>
+                <span className="source-tile-hint">Articles and explainers</span>
               </label>
             </div>
           </fieldset>
 
-          {mode === 'pdf' ? (
+          {mode === 'topic' ? (
+            <p className="topic-mode-note" id="create-topic-mode">
+              <Icon name="globe" size={18} />
+              <span>Stash finds the Wikipedia article for this topic, turns it into bite-sized cards, and adds pictures and short videos from Wikimedia Commons where they fit.</span>
+            </p>
+          ) : mode === 'pdf' ? (
             <div className="field">
               <label htmlFor="create-file" className="label">PDF file</label>
               <input
@@ -189,16 +217,28 @@ export function CreatePage() {
 
         {pending ? (
           <div className="pending" role="status" aria-live="polite">
-            <span className="spinner" aria-hidden="true" />
-            <div>
-              <strong>{mode === 'pdf' ? 'Reading your PDF and writing posts…' : 'Reading the page and writing posts…'}</strong>
-              <span className="muted small">This usually takes a few seconds and can take up to a minute. {elapsed > 0 ? `${elapsed}s` : ''}</span>
-            </div>
+            <ol className="pending-steps" aria-hidden="true">
+              {[
+                mode === 'topic' ? 'Finding a Wikipedia article' : mode === 'pdf' ? 'Reading your PDF' : 'Reading the page',
+                'Picking the key ideas',
+                'Adding pictures and videos',
+              ].map((label, i) => {
+                const stage = elapsed < 3 ? 0 : elapsed < 8 ? 1 : 2;
+                return (
+                  <li key={label} className={i < stage ? 'done' : i === stage ? 'now' : ''}>
+                    <span className="pending-dot">{i < stage ? <Icon name="check" size={14} /> : null}</span>
+                    {label}
+                  </li>
+                );
+              })}
+            </ol>
+            <span className="visually-hidden">{mode === 'topic' ? 'Finding an article and writing bites.' : mode === 'pdf' ? 'Reading your PDF and writing bites.' : 'Reading the page and writing bites.'}</span>
+            <span className="muted small">This usually takes a few seconds and can take up to a minute. {elapsed > 0 ? `${elapsed}s` : ''}</span>
           </div>
         ) : null}
 
         <button type="submit" className="btn btn-primary btn-block" disabled={pending}>
-          {pending ? 'Creating lesson…' : 'Create lesson'}
+          {pending ? 'Making your lesson…' : 'Make my lesson'}
         </button>
       </form>
     </div>

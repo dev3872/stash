@@ -2,12 +2,15 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router';
 import { useApi } from '../api/useApi.js';
 import { useResource } from '../lib/useResource.js';
-import { PostCard } from '../components/PostCard.jsx';
+import { SourceLine } from '../components/SourceLine.jsx';
+import { LikeButton } from '../components/LikeButton.jsx';
+import { ShareButton } from '../components/ShareButton.jsx';
+import { BiteCard } from '../components/BiteCard.jsx';
 import { Avatar } from '../components/Avatar.jsx';
 import { Icon } from '../components/Icon.jsx';
 import { StoryComposer } from '../components/StoryComposer.jsx';
 import { CardSkeleton, ErrorState, Spinner } from '../components/States.jsx';
-import { fullDate, relativeTime } from '../lib/time.js';
+import { compactNumber, fullDate, relativeTime } from '../lib/time.js';
 
 const MAX_COMMENT = 500;
 
@@ -122,7 +125,7 @@ export function PostPage() {
     return (
       <div className="page">
         <ErrorState error={error} onRetry={error.status === 404 ? null : reload} title={error.status === 404 ? 'Post not found' : 'This post didn’t load'} />
-        {error.status === 404 ? <p className="hint center"><Link to="/">Back to the feed</Link></p> : null}
+        {error.status === 404 ? <p className="hint center"><Link to="/">Back to home</Link></p> : null}
       </div>
     );
   }
@@ -132,18 +135,40 @@ export function PostPage() {
   const prev = sequence[index - 1];
   const next = sequence[index + 1];
   const patchPost = (patch) => setData((d) => ({ ...d, post: { ...d.post, ...patch } }));
+  const total = post.source?.postCount || sequence.length;
 
   return (
-    <div className="page">
+    <div className="page post-page">
       <nav className="crumbs" aria-label="Breadcrumb">
-        <Link to="/">Feed</Link>
+        <Link to="/">Home</Link>
         <span aria-hidden="true">/</span>
         <Link to={`/topics/${post.topic.slug}`}>{post.topic.name}</Link>
-        <span aria-hidden="true">/</span>
-        <Link to={`/sequences/${post.source.id}`}>Full lesson</Link>
       </nav>
 
-      <PostCard post={post} detail onChange={patchPost} />
+      <BiteCard post={post} total={total} headingLevel={1}>
+        <div className="bite-byline">
+          <Link to={`/users/${post.author.id}`} className="author">
+            <Avatar user={post.author} size={26} />
+            <span>{post.author.name}</span>
+          </Link>
+          <time dateTime={post.createdAt} title={fullDate(post.createdAt)} className="muted small">{relativeTime(post.createdAt)}</time>
+        </div>
+        <SourceLine source={post.source} />
+      </BiteCard>
+
+      <div className="post-bar">
+        <div className="bite-actions">
+          <LikeButton post={post} onChange={patchPost} />
+          <a href="#comments" className="action" aria-label={`Comments: ${post.commentCount}`}>
+            <Icon name="comment" />
+            <span aria-hidden="true">{compactNumber(post.commentCount)}</span>
+          </a>
+          <ShareButton post={post} />
+        </div>
+        <Link to={`/learn/${post.source.id}?b=${post.order + 1}`} className="btn btn-primary btn-small">
+          <Icon name="play" size={15} filled /> Read the lesson
+        </Link>
+      </div>
 
       <div className="post-tools">
         <button type="button" className="btn btn-small" onClick={() => (isAuthenticated ? setComposing(true) : login())}>
@@ -154,13 +179,13 @@ export function PostPage() {
       <nav className="seq-nav" aria-label="Lesson navigation">
         {prev ? (
           <Link to={`/posts/${prev.id}`} className="seq-link">
-            <span className="muted small"><Icon name="back" size={14} /> Previous</span>
+            <span className="muted small"><Icon name="back" size={14} /> Previous bite</span>
             <span>{prev.title}</span>
           </Link>
         ) : <span />}
         {next ? (
           <Link to={`/posts/${next.id}`} className="seq-link seq-next">
-            <span className="muted small">Next <Icon name="next" size={14} /></span>
+            <span className="muted small">Next bite <Icon name="next" size={14} /></span>
             <span>{next.title}</span>
           </Link>
         ) : null}

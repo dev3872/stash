@@ -90,6 +90,7 @@ cp client/.env.example client/.env
 | `PORT` | yes | API port, e.g. `4000` |
 | `OPENAI_API_KEY` | no | Turns on model-written posts. See [Post conversion](#post-conversion). |
 | `OPENAI_MODEL` | no | Defaults to `gpt-4o-mini` |
+| `WIKIMEDIA_CONTACT` | no | Email or URL sent to Wikipedia in the User-Agent, as Wikimedia asks of API users |
 
 ### `client/.env`
 
@@ -181,6 +182,45 @@ The `server/src/services/` folder holds `extract-pdf.js`, `extract-url.js`, `con
 
 ---
 
+## Lessons from just a topic name
+
+On **Create**, the default source is **Just the topic**. Type a topic (for example "Photosynthesis") and Stash:
+
+1. Looks up the topic on English Wikipedia. It tries the exact title first, following redirects, then search, and it skips disambiguation pages, so "Mercury" finds "Mercury (planet)".
+2. Downloads the article as plain text. It drops reference-style sections such as See also, References and External links.
+3. Runs the text through the same converter as PDFs and links: OpenAI when `OPENAI_API_KEY` is set, otherwise the local converter.
+
+The source is saved as a link to the article (`kind: url`, `origin: topic`), so every bite links back to it. If no article matches, the article is too short, or Wikipedia can't be reached, the request fails with a clear 400 message and nothing is saved.
+
+API: `POST /api/sources` with JSON `{ "topic": "Photosynthesis", "from": "wikipedia" }`.
+
+Set `WIKIMEDIA_CONTACT` in `server/.env` to an email address or URL. Wikimedia asks API users to include a way to contact them, and Stash sends it in its User-Agent.
+
+## Pictures and videos on bites
+
+Every new lesson, whatever its source, gets pictures where they fit (`server/src/services/wikipedia.js`, `server/src/services/media.js`):
+
+- Stash collects the images, animated GIFs and WebM videos used on the topic's Wikipedia article. It reads their captions, authors and licenses from Wikimedia Commons.
+- It keeps only freely licensed or public-domain files, and skips icons, logos, tiny images and odd shapes.
+- Each file is matched to the bite whose title and text share the most words with its caption. A bite gets a picture only when it matches; the first bite can fall back to the article's lead image. Bites without a match show the generated topic art.
+- The picture's caption, author and license, with a link to the file page, are stored on the post (`Post.media`) and shown under the picture, as the licenses require.
+- Lessons made before this feature get pictures the first time someone opens or lists them (`Source.mediaCheckedAt` records that the lookup ran).
+- Files are shown straight from `upload.wikimedia.org`; nothing is copied to your server. Finding pictures is best effort: if Wikipedia can't be reached, the lesson is still created, without pictures.
+
+On screen, each bite shows the picture or video first, then the title, the **Key idea** (the first sentence, in large type), the other points one per line with key terms highlighted, and a **Think of it like this** example. A **Listen** button reads the bite aloud with the browser's built-in speech.
+
+## Learning experience
+
+The interface is built around short, swipeable lessons (a lesson is one source and its ordered posts, called "bites" in the UI):
+
+- **Home** (`/`): a greeting, a **Today's goal** card (daily goal ring, streak, this week), **Continue learning** for unfinished lessons, a grid of topics, and lesson cards in **Latest**, **Following** and **For you** tabs. Each lesson card shows cover art, topic, title, the first bite as a preview, author, time, like and comment totals, and your progress.
+- **Explore** (`/explore`): every topic as a tile, with search.
+- **Topic** (`/topics/:slug`): a topic header with a **Start learning** / **Continue** button and that topic's lessons.
+- **Lesson player** (`/learn/:id?b=3`): full screen, one bite at a time, with a segmented progress bar. Move with **Next**/**Back**, a swipe, or the arrow keys; `Esc` closes. Each bite has like, comment and share. The last bite leads to a recap screen (streak, today's goal, what you covered, an "Up next" lesson). The current bite lives in the URL, so reload and back keep your place. Old `/sequences/:id` links redirect here.
+- **Post** (`/posts/:id`): one bite with its comments and a **Read the lesson** button.
+- **Progress and streaks:** when a signed-in reader lands on a bite, the client saves it. New bites count toward a daily goal of 5. A day with at least one new bite keeps the streak going, and days use the reader's own time zone (sent by the browser). Signed-out visitors can read everything; progress is not saved.
+- Each topic gets a stable color and generated cover art from its name (`client/src/lib/theme.js`, `components/TopicArt.jsx`). There are no image files. The Nunito font is bundled with `@fontsource-variable/nunito`, so no external font host is needed.
+
 ## Features beyond the core feed
 
 - **Follows:** follow other learners from their profile (`/users/:id`). The **Following** feed tab shows lessons from people you follow. Follower and following counts are stored on the user document.
@@ -225,9 +265,14 @@ JSON under `/api`, CORS limited to `CLIENT_ORIGIN`. Errors look like `{ "error":
 | `GET /api/feed?topic=&author=&source=&tab=latest\|following&cursor=&limit=` | optional | Feed, newest lesson first, posts in order. Cursor-paginated. |
 | `GET /api/feed/for-you?page=&limit=` | optional | Recommended lessons |
 | `GET /api/posts/:id` | optional | Post detail plus the other posts in its lesson |
-| `GET /api/topics` | | Topics that have posts |
-| `GET /api/topics/:slug` | | One topic |
-| `POST /api/sources` | auth | Multipart `topic` + `file` (PDF), or JSON `{ topic, url }` |
+| `GET /api/lessons?topic=&author=&tab=latest\|following&cursor=&limit=` | optional | Lessons, newest first, with a first-bite preview and (signed in) your progress. Cursor-paginated. |
+| `GET /api/lessons/for-you?page=&limit=` | optional | Recommended lessons, each with its reason |
+| `GET /api/lessons/:id` | optional | One lesson, all of its bites in order, your progress and a suggested next lesson |
+| `POST /api/lessons/:id/progress` | auth | `{ index, tz }`: you reached bite `index` (0-based). Returns progress plus updated streak and goal. |
+| `GET /api/me/stats?tz=` | auth | Streak, today's bites vs. the daily goal, the last 7 days, totals and lessons in progress |
+| `GET /api/topics` | | Topics that have posts, with lesson counts |
+| `GET /api/topics/:slug` | | One topic, with its lesson count |
+| `POST /api/sources` | auth | Multipart `topic` + `file` (PDF), JSON `{ topic, url }`, or JSON `{ topic, from: "wikipedia" }` for a topic-only lesson |
 | `GET /api/sources/:id` | auth (owner) | Source status: `pending`, `ready` or `failed`, with an error message |
 | `POST /api/posts/:id/like`, `DELETE /api/posts/:id/like` | auth | Like or unlike. Idempotent. |
 | `GET /api/posts/:id/comments` | | Comments, oldest first |
@@ -255,12 +300,14 @@ All models use Mongoose with timestamps:
 
 - `User`: `auth0Sub`, `name`, `email`, `picture`, follower and following counts
 - `Topic`: `name`, `nameKey` (lower-cased, unique: this makes names unique case-insensitively), `slug`, `postCount`
-- `Source`: `topic`, `author`, `kind`, `url` or `filePath` + `originalName`, `title`, `extractedText`, `status`, `error`, `converter`, plus lesson totals for the recommender
-- `Post`: `topic`, `source`, `author`, `title`, `body`, `example`, `order`, `likeCount`, `commentCount`, `shareCount`
+- `Source`: `topic`, `author`, `kind`, `url` or `filePath` + `originalName`, `title`, `extractedText`, `status`, `error`, `converter`, `origin` (upload, link or topic), `wikiTitle`, `mediaCheckedAt`, plus lesson totals for the recommender
+- `Post`: `topic`, `source`, `author`, `title`, `body`, `example`, `order`, `likeCount`, `commentCount`, `shareCount`, and optional `media` (`kind` image/animation/video, `url`, `poster`, `caption`, `credit`, `license`, `pageUrl`)
 - `Like` (unique on `post` + `user`), `Comment`, `Share`
 - `Follow` (unique on `follower` + `following`)
 - `Conversation`, `Message`
 - `Story` (TTL), `StoryView`
+- `LessonProgress` (unique on `user` + `source`): the furthest and current bite, and when the lesson was completed
+- `ActivityDay` (unique on `user` + `day`): new bites read and lessons completed per local calendar day; streaks and the daily goal come from these rows
 
 Counts are kept on documents and updated with `$inc` whenever a like, comment, share or follow changes. Decrements never go below zero, so the feed never aggregates on read. Liking twice and unliking twice are both no-ops, so counts stay correct when a like is toggled off.
 
@@ -273,15 +320,17 @@ server/src/
   config.js           env loading and limits
   middleware/         Auth0 JWT verification + user upsert, error responses
   models/             Mongoose models
-  routes/             feed, posts, topics, sources, me, users, stories, messages, recommendations
-  services/           extraction, conversion, recommendation, serialization
+  routes/             feed, lessons, posts, topics, sources, me, users, stories, messages, recommendations
+  services/           extraction, conversion, lessons and streaks, recommendation, serialization
 client/src/
   main.jsx, App.jsx   router and providers
   auth/               Auth0 provider (returns to the page you came from)
   api/                fetch wrapper and useApi hook (adds the access token)
-  components/         post card, like/share, feed list, stories, toasts, layout
-  pages/              Feed, Post, Create, Topic, Sequence, Profile, User, Messages, Conversation
-  styles.css          mobile-first CSS, light and dark
+  components/         lesson cards, daily goal, topic tiles and art, like/share, stories, toasts, layout
+  lib/                data hooks, learner stats context, topic colors
+  pages/              Home (FeedPage), Explore, Topic, LessonPlayer, Post, Create, Profile, User, Messages, Conversation
+  styles.css          base mobile-first CSS, light and dark
+  nibble.css          the learning look: tokens, lesson cards, player, recap
 ```
 
 ## Notes and limits

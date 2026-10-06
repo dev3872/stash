@@ -15,6 +15,10 @@ const sourceSchema = new mongoose.Schema(
     status: { type: String, enum: ['pending', 'ready', 'failed'], default: 'pending', index: true },
     error: { type: String },
     converter: { type: String, enum: ['openai', 'local'] },
+    // 'topic' when the learner gave only a topic name and Stash found a Wikipedia article.
+    origin: { type: String, enum: ['upload', 'link', 'topic'] },
+    wikiTitle: { type: String, maxlength: 300 },
+    mediaCheckedAt: { type: Date },
     postCount: { type: Number, default: 0, min: 0 },
     // Engagement totals across the sequence, used by the recommender.
     likeCount: { type: Number, default: 0, min: 0 },

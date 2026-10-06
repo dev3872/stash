@@ -10,6 +10,8 @@ import { UserPage } from './pages/UserPage.jsx';
 import { MessagesPage } from './pages/MessagesPage.jsx';
 import { ConversationPage } from './pages/ConversationPage.jsx';
 import { NotFoundPage } from './pages/NotFoundPage.jsx';
+import { LessonPlayer } from './pages/LessonPlayer.jsx';
+import { ExplorePage } from './pages/ExplorePage.jsx';
 
 export function App() {
   return (
@@ -20,6 +22,8 @@ export function App() {
         <Route path="create" element={<CreatePage />} />
         <Route path="topics/:slug" element={<TopicPage />} />
         <Route path="sequences/:id" element={<SequencePage />} />
+        <Route path="learn/:id" element={<LessonPlayer />} />
+        <Route path="explore" element={<ExplorePage />} />
         <Route path="profile" element={<ProfilePage />} />
         <Route path="users/:id" element={<UserPage />} />
         <Route path="messages" element={<MessagesPage />} />
